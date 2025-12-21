@@ -149,6 +149,23 @@ import STTextViewCommon
     @MainActor
     open var rightPadding: CGFloat = 0
 
+    /// Custom annotation decorations to render on text (underlines, backgrounds).
+    ///
+    /// Set this property to display decorations at specific character ranges.
+    /// Decorations are rendered efficiently, only drawing for visible text.
+    /// Setting this property triggers a redisplay of affected fragments.
+    @MainActor
+    open var annotationDecorations: [STAnnotationDecoration] = [] {
+        didSet {
+            // Redisplay affected fragments
+            setNeedsDisplay()
+            contentView.setNeedsDisplay()
+            for subview in contentView.subviews {
+                subview.setNeedsDisplay()
+            }
+        }
+    }
+
     /// Enable to show line numbers in the gutter.
     @Invalidating(.layout)
     public var showsLineNumbers: Bool = false {

@@ -179,16 +179,12 @@ final class STTextLayoutFragmentView: NSView {
         }
 
         // Get the fragment's range in the document
-        guard let fragmentRange = layoutFragment.rangeInElement else {
-            return
-        }
+        let fragmentRange = layoutFragment.rangeInElement
 
         // Convert fragment range to NSRange for comparison
         let documentRange = textContentManager.documentRange
-        guard let fragmentStart = textContentManager.offset(from: documentRange.location, to: fragmentRange.location),
-              let fragmentEnd = textContentManager.offset(from: documentRange.location, to: fragmentRange.endLocation) else {
-            return
-        }
+        let fragmentStart = textContentManager.offset(from: documentRange.location, to: fragmentRange.location)
+        let fragmentEnd = textContentManager.offset(from: documentRange.location, to: fragmentRange.endLocation)
         let fragmentNSRange = NSRange(location: fragmentStart, length: fragmentEnd - fragmentStart)
 
         for decoration in textView.annotationDecorations {
@@ -196,8 +192,8 @@ final class STTextLayoutFragmentView: NSView {
             guard filter(decoration.style) else { continue }
 
             // Check if this decoration intersects with the fragment's range
-            guard let intersectionRange = fragmentNSRange.intersection(decoration.range),
-                  intersectionRange.length > 0 else {
+            let intersectionRange = NSIntersectionRange(fragmentNSRange, decoration.range)
+            guard intersectionRange.length > 0 else {
                 continue
             }
 
