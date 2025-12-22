@@ -165,10 +165,11 @@ final class STTextLayoutFragmentView: UIView {
     // MARK: - Annotation Drawing
 
     /// Shared logic for getting decorations that intersect this fragment.
+    /// The block receives (decoration, frame, decorationIndex) where index is for alternating styles.
     private func enumerateAnnotationSegments(
         matching filter: (STAnnotationStyle) -> Bool,
         in dirtyRect: CGRect,
-        using block: (STAnnotationDecoration, CGRect) -> Void
+        using block: (STAnnotationDecoration, CGRect, Int) -> Void
     ) {
         guard let textLayoutManager = layoutFragment.textLayoutManager,
               let textContentManager = textLayoutManager.textContentManager,
@@ -187,6 +188,7 @@ final class STTextLayoutFragmentView: UIView {
         let fragmentNSRange = NSRange(location: fragmentStart, length: fragmentEnd - fragmentStart)
 
         // Decorations are sorted by range.location, so we can exit early
+        var decorationIndex = 0
         for decoration in textView.annotationDecorations {
             // Early exit: if decoration starts after fragment ends, no more can intersect
             if decoration.range.location >= fragmentNSRange.location + fragmentNSRange.length {
@@ -199,6 +201,7 @@ final class STTextLayoutFragmentView: UIView {
             // Check if this decoration intersects with the fragment's range
             let intersectionRange = NSIntersectionRange(fragmentNSRange, decoration.range)
             guard intersectionRange.length > 0 else {
+                decorationIndex += 1
                 continue
             }
 
@@ -206,8 +209,11 @@ final class STTextLayoutFragmentView: UIView {
             guard let startLocation = textContentManager.location(documentRange.location, offsetBy: intersectionRange.location),
                   let endLocation = textContentManager.location(startLocation, offsetBy: intersectionRange.length),
                   let textRange = NSTextRange(location: startLocation, end: endLocation) else {
+                decorationIndex += 1
                 continue
             }
+
+            let currentIndex = decorationIndex
 
             // Get the frame for this text segment
             textLayoutManager.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, segmentFrame, _, _ in
@@ -224,16 +230,18 @@ final class STTextLayoutFragmentView: UIView {
                     return true
                 }
 
-                block(decoration, localFrame)
+                block(decoration, localFrame, currentIndex)
                 return true
             }
+
+            decorationIndex += 1
         }
     }
 
     private func drawAnnotationBackgrounds(_ dirtyRect: CGRect, in context: CGContext) {
         context.saveGState()
 
-        enumerateAnnotationSegments(matching: { $0 == .background }, in: dirtyRect) { decoration, localFrame in
+        enumerateAnnotationSegments(matching: { $0 == .background }, in: dirtyRect) { decoration, localFrame, _ in
             context.setFillColor(decoration.color.cgColor)
             let bgRect = localFrame.insetBy(dx: 0, dy: -1)
             let path = UIBezierPath(roundedRect: bgRect, cornerRadius: decoration.thickness)
@@ -246,70 +254,34 @@ final class STTextLayoutFragmentView: UIView {
     private func drawAnnotationUnderlines(_ dirtyRect: CGRect, in context: CGContext) {
         context.saveGState()
 
-        enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame in
-            let underlineY = localFrame.maxY + decoration.verticalOffset
-            context.setStrokeColor(decoration.color.cgColor)
+        // Alternating offsets: even indices at 1pt, odd at 3pt from baseline
+        let offsets: [CGFloat] = [1, 3]
 
-            switch decoration.style {
-            case .solidUnderline:
-                drawSolidUnderline(at: localFrame, y: underlineY, thickness: decoration.thickness, in: context)
-            case .dashedUnderline:
-                drawDashedUnderline(at: localFrame, y: underlineY, thickness: decoration.thickness, in: context)
-            case .dottedUnderline:
-                drawDottedUnderline(at: localFrame, y: underlineY, thickness: decoration.thickness, in: context)
-            case .wavyUnderline:
-                drawWavyUnderline(at: localFrame, y: underlineY, thickness: decoration.thickness, in: context)
-            case .background:
-                break // Handled separately
-            }
+        enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame, index in
+            let offset = offsets[index % offsets.count]
+            let underlineY = localFrame.maxY + offset
+            let thickness: CGFloat = 1.5
+
+            // Draw solid underline (all styles render the same now)
+            context.setStrokeColor(decoration.color.cgColor)
+            context.setLineWidth(thickness)
+            context.move(to: CGPoint(x: localFrame.minX, y: underlineY))
+            context.addLine(to: CGPoint(x: localFrame.maxX, y: underlineY))
+            context.strokePath()
+
+            // Draw small circle marker at the start
+            let markerSize: CGFloat = 4
+            let markerRect = CGRect(
+                x: localFrame.minX - markerSize / 2,
+                y: underlineY - markerSize / 2,
+                width: markerSize,
+                height: markerSize
+            )
+            context.setFillColor(decoration.color.cgColor)
+            context.fillEllipse(in: markerRect)
         }
 
         context.restoreGState()
-    }
-
-    private func drawSolidUnderline(at rect: CGRect, y: CGFloat, thickness: CGFloat, in context: CGContext) {
-        let path = UIBezierPath()
-        path.lineWidth = thickness
-        path.move(to: CGPoint(x: rect.minX, y: y))
-        path.addLine(to: CGPoint(x: rect.maxX, y: y))
-        path.stroke()
-    }
-
-    private func drawDashedUnderline(at rect: CGRect, y: CGFloat, thickness: CGFloat, in context: CGContext) {
-        let path = UIBezierPath()
-        path.lineWidth = thickness
-        path.setLineDash([4, 2], count: 2, phase: 0)
-        path.move(to: CGPoint(x: rect.minX, y: y))
-        path.addLine(to: CGPoint(x: rect.maxX, y: y))
-        path.stroke()
-    }
-
-    private func drawDottedUnderline(at rect: CGRect, y: CGFloat, thickness: CGFloat, in context: CGContext) {
-        let path = UIBezierPath()
-        path.lineWidth = thickness
-        path.lineCapStyle = .round
-        path.setLineDash([1, 3], count: 2, phase: 0)
-        path.move(to: CGPoint(x: rect.minX, y: y))
-        path.addLine(to: CGPoint(x: rect.maxX, y: y))
-        path.stroke()
-    }
-
-    private func drawWavyUnderline(at rect: CGRect, y: CGFloat, thickness: CGFloat, in context: CGContext) {
-        let wavelength: CGFloat = 4
-        let amplitude: CGFloat = 1.5
-        let path = UIBezierPath()
-        path.lineWidth = thickness
-
-        var x = rect.minX
-        path.move(to: CGPoint(x: x, y: y))
-
-        while x < rect.maxX {
-            let waveY = y + amplitude * sin((x - rect.minX) / wavelength * .pi * 2)
-            path.addLine(to: CGPoint(x: x, y: waveY))
-            x += 1
-        }
-
-        path.stroke()
     }
 }
 
