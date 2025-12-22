@@ -1329,11 +1329,21 @@ import AVFoundation
 
         let horizontalContentInset = scrollView?.contentInsets.horizontalInsets ?? 0
 
+        // Use scroll view's clip view bounds when available (more reliable than visibleRect).
+        // visibleRect depends on the view's current frame, which can be 0 during resize,
+        // creating a chicken-and-egg problem where sizeToFit() computes width as 0.
+        let safeVisibleSize: CGSize
+        if let clipView = scrollView?.contentView {
+            safeVisibleSize = clipView.bounds.size
+        } else {
+            safeVisibleSize = visibleRect.size
+        }
+
         // Need to configure TextContainer before layout calculations
         var newTextContainerSize = textContainer.size
         if !isHorizontallyResizable {
             // setup text container for wrap-text, need for layout
-            let proposedContentWidth = visibleRect.width - gutterWidth
+            let proposedContentWidth = safeVisibleSize.width - gutterWidth
             if !newTextContainerSize.width.isAlmostEqual(to: proposedContentWidth) {
                 newTextContainerSize.width = proposedContentWidth
             }
@@ -1342,7 +1352,7 @@ import AVFoundation
         }
 
         if !isVerticallyResizable {
-            let proposedContentHeight = visibleRect.height
+            let proposedContentHeight = safeVisibleSize.height
             if !newTextContainerSize.height.isAlmostEqual(to: proposedContentHeight) {
                 newTextContainerSize.height = proposedContentHeight
             }
@@ -1396,7 +1406,7 @@ import AVFoundation
         } else if isHorizontallyResizable {
             // no wrap-text
             // limit width to fit the width of usage bounds
-            newFrame.size.width = max(visibleRect.width - horizontalContentInset, usageBoundsForTextContainerSize.width - gutterWidth + textContainer.lineFragmentPadding)
+            newFrame.size.width = max(safeVisibleSize.width - horizontalContentInset, usageBoundsForTextContainerSize.width - gutterWidth + textContainer.lineFragmentPadding)
         }
 
         if !isVerticallyResizable {
@@ -1411,7 +1421,7 @@ import AVFoundation
         newFrame = newFrame.pixelAligned
 
         // Skip resize when usageBoundsForTextContainer reports invalid height during text reset
-        if initialUsageBoundsHeight < typingLineHeight && frame.height > visibleRect.height {
+        if initialUsageBoundsHeight < typingLineHeight && frame.height > safeVisibleSize.height {
             return
         }
 
