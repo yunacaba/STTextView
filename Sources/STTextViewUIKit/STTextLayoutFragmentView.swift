@@ -186,7 +186,13 @@ final class STTextLayoutFragmentView: UIView {
         let fragmentEnd = textContentManager.offset(from: documentRange.location, to: fragmentRange.endLocation)
         let fragmentNSRange = NSRange(location: fragmentStart, length: fragmentEnd - fragmentStart)
 
+        // Decorations are sorted by range.location, so we can exit early
         for decoration in textView.annotationDecorations {
+            // Early exit: if decoration starts after fragment ends, no more can intersect
+            if decoration.range.location >= fragmentNSRange.location + fragmentNSRange.length {
+                break
+            }
+
             // Filter by style type
             guard filter(decoration.style) else { continue }
 

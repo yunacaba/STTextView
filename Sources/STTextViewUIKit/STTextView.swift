@@ -147,6 +147,10 @@ import STTextViewCommon
     @MainActor
     open var annotationDecorations: [STAnnotationDecoration] = [] {
         didSet {
+            // Sort by range location for efficient fragment intersection
+            if !annotationDecorations.isEmpty {
+                annotationDecorations.sort { $0.range.location < $1.range.location }
+            }
             // Redisplay affected fragments
             setNeedsDisplay()
             contentView.setNeedsDisplay()
