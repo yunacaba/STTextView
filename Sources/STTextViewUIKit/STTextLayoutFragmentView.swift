@@ -10,19 +10,6 @@ import CoreTextSwift
 #endif
 
 final class STTextLayoutFragmentView: UIView {
-
-    // MARK: - Parent Text View Access
-
-    private func findParentTextView() -> STTextView? {
-        var currentView: UIView? = self
-        while let parentView = currentView?.superview {
-            if let textView = parentView as? STTextView {
-                return textView
-            }
-            currentView = parentView
-        }
-        return nil
-    }
     private let layoutFragment: NSTextLayoutFragment
     private var layoutStateObservation: NSKeyValueObservation?
 
@@ -162,6 +149,17 @@ final class STTextLayoutFragmentView: UIView {
                 addSubview(attachmentView)
             }
         }
+    }
+
+    private func findParentTextView() -> STTextView? {
+        var currentView: UIView? = self
+        while let parentView = currentView?.superview {
+            if let textView = parentView as? STTextView {
+                return textView
+            }
+            currentView = parentView
+        }
+        return nil
     }
 
     // MARK: - Annotation Drawing
