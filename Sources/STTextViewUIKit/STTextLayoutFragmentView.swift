@@ -256,7 +256,7 @@ final class STTextLayoutFragmentView: UIView {
 
         let underlineOffset: CGFloat = 2
         let thickness: CGFloat = 1.5
-        let markerSize: CGFloat = 5
+        let markerSize: CGFloat = 6
 
         enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame, _ in
             let underlineY = localFrame.maxY + underlineOffset
