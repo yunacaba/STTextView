@@ -255,31 +255,61 @@ final class STTextLayoutFragmentView: NSView {
     private func drawAnnotationUnderlines(_ dirtyRect: CGRect, in context: CGContext) {
         context.saveGState()
 
-        // Alternating offsets: even indices at 1pt, odd at 3pt from baseline
-        let offsets: [CGFloat] = [1, 3]
+        let underlineOffset: CGFloat = 2
+        let thickness: CGFloat = 1.5
+        let markerSize: CGFloat = 5
 
-        enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame, index in
-            let offset = offsets[index % offsets.count]
-            let underlineY = localFrame.maxY + offset
-            let thickness: CGFloat = 1.5
+        enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame, _ in
+            let underlineY = localFrame.maxY + underlineOffset
 
-            // Draw solid underline (all styles render the same now)
+            // Draw solid underline
             context.setStrokeColor(decoration.color.cgColor)
             context.setLineWidth(thickness)
             context.move(to: CGPoint(x: localFrame.minX, y: underlineY))
             context.addLine(to: CGPoint(x: localFrame.maxX, y: underlineY))
             context.strokePath()
 
-            // Draw small circle marker at the start
-            let markerSize: CGFloat = 4
-            let markerRect = CGRect(
-                x: localFrame.minX - markerSize / 2,
-                y: underlineY - markerSize / 2,
-                width: markerSize,
-                height: markerSize
-            )
+            // Draw marker at the start based on marker type
             context.setFillColor(decoration.color.cgColor)
-            context.fillEllipse(in: markerRect)
+            let markerX = localFrame.minX
+            let markerY = underlineY
+
+            switch decoration.marker {
+            case .circle:
+                let rect = CGRect(
+                    x: markerX - markerSize / 2,
+                    y: markerY - markerSize / 2,
+                    width: markerSize,
+                    height: markerSize
+                )
+                context.fillEllipse(in: rect)
+
+            case .square:
+                let rect = CGRect(
+                    x: markerX - markerSize / 2,
+                    y: markerY - markerSize / 2,
+                    width: markerSize,
+                    height: markerSize
+                )
+                context.fill(rect)
+
+            case .triangle:
+                let halfSize = markerSize / 2
+                context.move(to: CGPoint(x: markerX - halfSize, y: markerY - halfSize))
+                context.addLine(to: CGPoint(x: markerX + halfSize, y: markerY))
+                context.addLine(to: CGPoint(x: markerX - halfSize, y: markerY + halfSize))
+                context.closePath()
+                context.fillPath()
+
+            case .diamond:
+                let halfSize = markerSize / 2
+                context.move(to: CGPoint(x: markerX, y: markerY - halfSize))
+                context.addLine(to: CGPoint(x: markerX + halfSize, y: markerY))
+                context.addLine(to: CGPoint(x: markerX, y: markerY + halfSize))
+                context.addLine(to: CGPoint(x: markerX - halfSize, y: markerY))
+                context.closePath()
+                context.fillPath()
+            }
         }
 
         context.restoreGState()
