@@ -262,19 +262,59 @@ final class STTextLayoutFragmentView: NSView {
     private func drawAnnotationUnderlines(_ dirtyRect: CGRect, in context: CGContext) {
         context.saveGState()
 
-        let underlineOffset: CGFloat = 2
-        let thickness: CGFloat = 1.5
-        let markerSize: CGFloat = 6
-
         enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame, _, isFirstSegment in
-            let underlineY = localFrame.maxY + underlineOffset
+            // Use decoration's properties instead of hardcoded values
+            let underlineY = localFrame.maxY + decoration.verticalOffset
+            let markerSize = max(6, decoration.thickness * 4)  // Proportional to thickness, minimum 6pt
 
-            // Draw solid underline
+            // Draw underline based on style
             context.setStrokeColor(decoration.color.cgColor)
-            context.setLineWidth(thickness)
-            context.move(to: CGPoint(x: localFrame.minX, y: underlineY))
-            context.addLine(to: CGPoint(x: localFrame.maxX, y: underlineY))
-            context.strokePath()
+            context.setLineWidth(decoration.thickness)
+
+            switch decoration.style {
+            case .solidUnderline:
+                context.move(to: CGPoint(x: localFrame.minX, y: underlineY))
+                context.addLine(to: CGPoint(x: localFrame.maxX, y: underlineY))
+                context.strokePath()
+
+            case .dashedUnderline:
+                context.setLineDash(phase: 0, lengths: [decoration.thickness * 3, decoration.thickness * 2])
+                context.move(to: CGPoint(x: localFrame.minX, y: underlineY))
+                context.addLine(to: CGPoint(x: localFrame.maxX, y: underlineY))
+                context.strokePath()
+                context.setLineDash(phase: 0, lengths: [])  // Reset
+
+            case .dottedUnderline:
+                context.setLineCap(.round)
+                context.setLineDash(phase: 0, lengths: [0, decoration.thickness * 2.5])
+                context.move(to: CGPoint(x: localFrame.minX, y: underlineY))
+                context.addLine(to: CGPoint(x: localFrame.maxX, y: underlineY))
+                context.strokePath()
+                context.setLineDash(phase: 0, lengths: [])  // Reset
+                context.setLineCap(.butt)
+
+            case .wavyUnderline:
+                let path = NSBezierPath()
+                let amplitude: CGFloat = decoration.thickness
+                let wavelength: CGFloat = decoration.thickness * 4
+                var x = localFrame.minX
+                path.move(to: CGPoint(x: x, y: underlineY))
+                var up = true
+                while x < localFrame.maxX {
+                    let nextX = min(x + wavelength / 2, localFrame.maxX)
+                    let controlY = underlineY + (up ? -amplitude : amplitude)
+                    path.curve(to: CGPoint(x: nextX, y: underlineY),
+                               controlPoint1: CGPoint(x: x + wavelength / 4, y: controlY),
+                               controlPoint2: CGPoint(x: nextX - wavelength / 4, y: controlY))
+                    x = nextX
+                    up.toggle()
+                }
+                path.lineWidth = decoration.thickness
+                path.stroke()
+
+            case .background:
+                break  // Handled in drawAnnotationBackgrounds
+            }
 
             // Only draw marker at the very start of the annotation
             guard isFirstSegment else { return }
