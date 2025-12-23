@@ -223,9 +223,9 @@ final class STTextLayoutFragmentView: UIView {
 
             // Get the frame for this text segment
             textLayoutManager.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, segmentFrame, _, _ in
-                // Convert to fragment-local coordinates
+                // Convert to fragment-local coordinates (subtract fragment origin for both X and Y)
                 let localFrame = CGRect(
-                    x: segmentFrame.origin.x,
+                    x: segmentFrame.origin.x - layoutFragment.layoutFragmentFrame.origin.x,
                     y: segmentFrame.origin.y - layoutFragment.layoutFragmentFrame.origin.y,
                     width: segmentFrame.width,
                     height: segmentFrame.height
