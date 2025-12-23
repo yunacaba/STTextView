@@ -165,11 +165,13 @@ final class STTextLayoutFragmentView: UIView {
     // MARK: - Annotation Drawing
 
     /// Shared logic for getting decorations that intersect this fragment.
-    /// The block receives (decoration, frame, decorationIndex) where index is for alternating styles.
+    /// The block receives (decoration, frame, decorationIndex, isFirstSegment) where:
+    /// - decorationIndex is for tracking which decoration this is
+    /// - isFirstSegment is true only for the very first segment of the decoration
     private func enumerateAnnotationSegments(
         matching filter: (STAnnotationStyle) -> Bool,
         in dirtyRect: CGRect,
-        using block: (STAnnotationDecoration, CGRect, Int) -> Void
+        using block: (STAnnotationDecoration, CGRect, Int, Bool) -> Void
     ) {
         guard let textLayoutManager = layoutFragment.textLayoutManager,
               let textContentManager = textLayoutManager.textContentManager,
@@ -214,6 +216,10 @@ final class STTextLayoutFragmentView: UIView {
             }
 
             let currentIndex = decorationIndex
+            // Check if this fragment contains the very start of the decoration
+            let decorationStartsInThisFragment = decoration.range.location >= fragmentNSRange.location &&
+                decoration.range.location < fragmentNSRange.location + fragmentNSRange.length
+            var isFirstSegment = decorationStartsInThisFragment
 
             // Get the frame for this text segment
             textLayoutManager.enumerateTextSegments(in: textRange, type: .standard, options: []) { _, segmentFrame, _, _ in
@@ -230,7 +236,8 @@ final class STTextLayoutFragmentView: UIView {
                     return true
                 }
 
-                block(decoration, localFrame, currentIndex)
+                block(decoration, localFrame, currentIndex, isFirstSegment)
+                isFirstSegment = false  // Only first segment gets the marker
                 return true
             }
 
@@ -241,7 +248,7 @@ final class STTextLayoutFragmentView: UIView {
     private func drawAnnotationBackgrounds(_ dirtyRect: CGRect, in context: CGContext) {
         context.saveGState()
 
-        enumerateAnnotationSegments(matching: { $0 == .background }, in: dirtyRect) { decoration, localFrame, _ in
+        enumerateAnnotationSegments(matching: { $0 == .background }, in: dirtyRect) { decoration, localFrame, _, _ in
             context.setFillColor(decoration.color.cgColor)
             let bgRect = localFrame.insetBy(dx: 0, dy: -1)
             let path = UIBezierPath(roundedRect: bgRect, cornerRadius: decoration.thickness)
@@ -258,7 +265,7 @@ final class STTextLayoutFragmentView: UIView {
         let thickness: CGFloat = 1.5
         let markerSize: CGFloat = 6
 
-        enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame, _ in
+        enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { decoration, localFrame, _, isFirstSegment in
             let underlineY = localFrame.maxY + underlineOffset
 
             // Draw solid underline
@@ -268,7 +275,9 @@ final class STTextLayoutFragmentView: UIView {
             context.addLine(to: CGPoint(x: localFrame.maxX, y: underlineY))
             context.strokePath()
 
-            // Draw marker at the start based on marker type
+            // Only draw marker at the very start of the annotation
+            guard isFirstSegment else { return }
+
             context.setFillColor(decoration.color.cgColor)
             let markerX = localFrame.minX
             let markerY = underlineY
