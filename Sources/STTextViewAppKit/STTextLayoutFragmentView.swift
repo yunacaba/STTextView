@@ -44,12 +44,19 @@ final class STTextLayoutFragmentView: NSView {
     override func draw(_ dirtyRect: CGRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         context.saveGState()
+
+        // Collect annotation segments once (single enumeration)
+        let annotationSegments = collectAnnotationSegments(in: dirtyRect)
+
         // Draw backgrounds first (behind text)
-        drawAnnotationBackgrounds(dirtyRect, in: context)
+        drawAnnotationBackgrounds(annotationSegments.backgrounds, in: context)
+
         layoutFragment.draw(at: .zero, in: context)
         drawSpellCheckerAttributes(dirtyRect, in: context)
+
         // Draw underlines after text
-        drawAnnotationUnderlines(dirtyRect, in: context)
+        drawAnnotationUnderlines(annotationSegments.underlines, in: context)
+
         context.restoreGState()
     }
 
@@ -165,20 +172,25 @@ final class STTextLayoutFragmentView: NSView {
 
     // MARK: - Annotation Drawing
 
-    /// Shared logic for getting annotations that intersect this fragment.
+    /// Segments collected from annotation attributes.
+    private struct AnnotationSegments {
+        var backgrounds: [(STAnnotationRenderAttribute, CGRect)] = []
+        var underlines: [(STAnnotationRenderAttribute, CGRect)] = []
+    }
+
+    /// Collect annotation segments from text storage attributes.
     ///
     /// Reads annotation render attributes directly from the NSAttributedString,
-    /// eliminating the need for a separate decorations array.
-    private func enumerateAnnotationSegments(
-        matching filter: (STAnnotationStyle) -> Bool,
-        in dirtyRect: CGRect,
-        using block: (STAnnotationRenderAttribute, CGRect) -> Void
-    ) {
+    /// eliminating the need for a separate decorations array. This method
+    /// enumerates attributes once and categorizes segments by style.
+    private func collectAnnotationSegments(in dirtyRect: CGRect) -> AnnotationSegments {
         guard let textLayoutManager = layoutFragment.textLayoutManager,
               let textContentManager = textLayoutManager.textContentManager as? NSTextContentStorage,
               let textStorage = textContentManager.textStorage else {
-            return
+            return AnnotationSegments()
         }
+
+        var segments = AnnotationSegments()
 
         // Get the fragment's range in the document
         let fragmentRange = layoutFragment.rangeInElement
@@ -190,7 +202,7 @@ final class STTextLayoutFragmentView: NSView {
         let fragmentNSRange = NSRange(location: fragmentStart, length: fragmentEnd - fragmentStart)
 
         guard fragmentNSRange.length > 0, fragmentNSRange.location + fragmentNSRange.length <= textStorage.length else {
-            return
+            return segments
         }
 
         // Enumerate annotation render attributes in this fragment's range
@@ -199,13 +211,11 @@ final class STTextLayoutFragmentView: NSView {
             in: fragmentNSRange,
             options: []
         ) { value, attrRange, _ in
-            guard let dict = value as? NSDictionary,
-                  let renderAttr = STAnnotationRenderAttribute(dictionary: dict) else {
+            guard let box = value as? STAnnotationRenderAttributeBox else {
                 return
             }
 
-            // Filter by style type
-            guard filter(renderAttr.style) else { return }
+            let renderAttr = box.attribute
 
             // attrRange is the full attribute range, which may extend beyond fragmentNSRange
             // We need to use the intersection for proper segment enumeration
@@ -239,16 +249,24 @@ final class STTextLayoutFragmentView: NSView {
                     return true
                 }
 
-                block(renderAttr, localFrame)
+                // Categorize by style
+                if renderAttr.style == .background {
+                    segments.backgrounds.append((renderAttr, localFrame))
+                } else {
+                    segments.underlines.append((renderAttr, localFrame))
+                }
+
                 return true
             }
         }
+
+        return segments
     }
 
-    private func drawAnnotationBackgrounds(_ dirtyRect: CGRect, in context: CGContext) {
+    private func drawAnnotationBackgrounds(_ segments: [(STAnnotationRenderAttribute, CGRect)], in context: CGContext) {
         context.saveGState()
 
-        enumerateAnnotationSegments(matching: { $0 == .background }, in: dirtyRect) { renderAttr, localFrame in
+        for (renderAttr, localFrame) in segments {
             context.setFillColor(renderAttr.color.cgColor)
             let bgRect = localFrame.insetBy(dx: 0, dy: -1)
             let path = NSBezierPath(roundedRect: bgRect, xRadius: renderAttr.thickness, yRadius: renderAttr.thickness)
@@ -258,12 +276,14 @@ final class STTextLayoutFragmentView: NSView {
         context.restoreGState()
     }
 
-    private func drawAnnotationUnderlines(_ dirtyRect: CGRect, in context: CGContext) {
+    private func drawAnnotationUnderlines(_ segments: [(STAnnotationRenderAttribute, CGRect)], in context: CGContext) {
         context.saveGState()
 
-        enumerateAnnotationSegments(matching: { $0 != .background }, in: dirtyRect) { renderAttr, localFrame in
+        for (renderAttr, localFrame) in segments {
             let underlineY = localFrame.maxY + renderAttr.verticalOffset
             context.setStrokeColor(renderAttr.color.cgColor)
+
+            // TODO: Implement marker rendering (renderAttr.marker)
 
             switch renderAttr.style {
             case .solidUnderline:
@@ -275,7 +295,7 @@ final class STTextLayoutFragmentView: NSView {
             case .wavyUnderline:
                 drawWavyUnderline(at: localFrame, y: underlineY, thickness: renderAttr.thickness, in: context)
             case .background:
-                break // Handled separately
+                break // Handled in drawAnnotationBackgrounds
             }
         }
 

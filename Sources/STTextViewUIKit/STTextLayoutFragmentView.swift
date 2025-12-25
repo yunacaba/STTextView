@@ -57,6 +57,12 @@ final class STTextLayoutFragmentView: UIView {
         super.draw(rect)
         layoutFragment.draw(at: .zero, in: context)
         // TODO: drawSpellCheckerAttributes(dirtyRect, in: context)
+        // TODO: Add annotation rendering from STAnnotationRenderKey attribute.
+        //       Port implementation from AppKit STTextLayoutFragmentView:
+        //       - collectAnnotationSegments(in:)
+        //       - drawAnnotationBackgrounds(_:in:)
+        //       - drawAnnotationUnderlines(_:in:)
+        //       - draw*Underline helper methods
     }
 #endif
 

@@ -28,7 +28,14 @@ public enum STAnnotationMarker: String, Hashable, Sendable, Codable {
 ///
 /// The range is determined by where this attribute is applied in the text,
 /// eliminating the need to store it in the value itself.
-public struct STAnnotationRenderAttribute: Hashable, Sendable {
+///
+/// Use `STAnnotationRenderAttributeBox` to wrap this for NSAttributedString storage:
+/// ```swift
+/// let attr = STAnnotationRenderAttribute(style: .wavyUnderline, color: .red)
+/// let box = STAnnotationRenderAttributeBox(attribute: attr)
+/// textStorage.addAttribute(STAnnotationRenderKey, value: box, range: range)
+/// ```
+public struct STAnnotationRenderAttribute: Hashable, Sendable, Codable {
   /// Optional app-specific ID for tracking (STTextView ignores this).
   public let id: String?
 
@@ -48,6 +55,7 @@ public struct STAnnotationRenderAttribute: Hashable, Sendable {
   public let thickness: CGFloat
 
   /// Optional marker shape at the start of the underline.
+  /// TODO: Marker rendering not yet implemented in STTextLayoutFragmentView
   public let marker: STAnnotationMarker?
 
   public init(
@@ -91,64 +99,9 @@ public struct STAnnotationRenderAttribute: Hashable, Sendable {
   }
 }
 
-// MARK: - NSDictionary Serialization
+// MARK: - STAnnotationStyle Codable
 
-extension STAnnotationRenderAttribute {
-  /// Convert to NSDictionary for NSAttributedString storage.
-  public func toDictionary() -> NSDictionary {
-    var dict: [String: Any] = [
-      "style": style.rawValue,
-      "red": red,
-      "green": green,
-      "blue": blue,
-      "alpha": alpha,
-      "verticalOffset": verticalOffset,
-      "thickness": thickness,
-    ]
-    if let id = id {
-      dict["id"] = id
-    }
-    if let marker = marker {
-      dict["marker"] = marker.rawValue
-    }
-    return dict as NSDictionary
-  }
-
-  /// Create from NSDictionary stored in NSAttributedString.
-  public init?(dictionary: NSDictionary) {
-    guard let dict = dictionary as? [String: Any],
-          let styleRaw = dict["style"] as? String,
-          let style = STAnnotationStyle(rawValue: styleRaw),
-          let red = dict["red"] as? CGFloat,
-          let green = dict["green"] as? CGFloat,
-          let blue = dict["blue"] as? CGFloat,
-          let alpha = dict["alpha"] as? CGFloat,
-          let verticalOffset = dict["verticalOffset"] as? CGFloat,
-          let thickness = dict["thickness"] as? CGFloat
-    else {
-      return nil
-    }
-
-    self.id = dict["id"] as? String
-    self.style = style
-    self.red = red
-    self.green = green
-    self.blue = blue
-    self.alpha = alpha
-    self.verticalOffset = verticalOffset
-    self.thickness = thickness
-
-    if let markerRaw = dict["marker"] as? String {
-      self.marker = STAnnotationMarker(rawValue: markerRaw)
-    } else {
-      self.marker = nil
-    }
-  }
-}
-
-// MARK: - STAnnotationStyle RawRepresentable
-
-extension STAnnotationStyle: RawRepresentable {
+extension STAnnotationStyle: Codable, RawRepresentable {
   public init?(rawValue: String) {
     switch rawValue {
     case "solidUnderline": self = .solidUnderline
@@ -174,4 +127,11 @@ extension STAnnotationStyle: RawRepresentable {
 // MARK: - NSAttributedString Key
 
 /// NSAttributedString key for annotation render attributes.
+///
+/// Store the boxed attribute in NSAttributedString:
+/// ```swift
+/// let attr = STAnnotationRenderAttribute(style: .wavyUnderline, color: .red)
+/// let box = STAnnotationRenderAttributeBox(attribute: attr)
+/// textStorage.addAttribute(STAnnotationRenderKey, value: box, range: range)
+/// ```
 public let STAnnotationRenderKey = NSAttributedString.Key("st.annotationRender")
