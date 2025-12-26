@@ -297,6 +297,7 @@ extension STTextView: UITextInput {
                     if let layoutFragment = textLayoutManager.extraLineTextLayoutFragment() {
                         // at least 2 lines guaranteed at this point
                         let prevTextLineFragment = layoutFragment.textLineFragments[layoutFragment.textLineFragments.count - 2]
+                        let extraLineFragment = layoutFragment.textLineFragments.last!
 
                         // Get paragraph style from previous line for consistent line height
                         let paragraphStyle = prevTextLineFragment.attributedString.attribute(
@@ -305,11 +306,12 @@ extension STTextView: UITextInput {
                         let lineHeightMultiple = paragraphStyle.stLineHeightMultiple
                         let scaledHeight = prevTextLineFragment.typographicBounds.height * lineHeightMultiple
 
+                        // Use extra line fragment's own Y position (already includes lineSpacing + paragraphSpacing)
                         textSelectionFrames.append(
                             CGRect(
                                 origin: CGPoint(
                                     x: textSegmentFrame.origin.x,
-                                    y: layoutFragment.layoutFragmentFrame.origin.y + prevTextLineFragment.typographicBounds.maxY * lineHeightMultiple
+                                    y: layoutFragment.layoutFragmentFrame.origin.y + extraLineFragment.typographicBounds.origin.y
                                 ),
                                 size: CGSize(
                                     width: textSegmentFrame.width,
