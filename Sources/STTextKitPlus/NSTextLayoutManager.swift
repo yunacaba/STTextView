@@ -109,11 +109,10 @@ extension NSTextLayoutManager {
     ///   - point: A CGPoint that represents the location of the tap or click.
     ///   - containerLocation: A NSTextLocation that describes the container location.
     /// - Returns: A location
+    ///
+    /// Note: For proper caret positioning at soft line breaks, prefer `caretLocationWithAffinity`
+    /// which also returns the appropriate affinity for the position.
     public func caretLocation(interactingAt point: CGPoint, options: CaretLocationOptions = [], inContainerAt containerLocation: NSTextLocation) -> NSTextLocation? {
-        guard let lineFragmentRange = lineFragmentRange(for: point, inContainerAt: containerLocation) else {
-            return nil
-        }
-
         if !options.contains(.allowOutside) {
             // Is point outside the frame?
             if let layoutFragmentFrame = textLayoutFragment(for: point)?.layoutFragmentFrame, !layoutFragmentFrame.contains(point) {
@@ -121,56 +120,8 @@ extension NSTextLayoutManager {
             }
         }
 
-        var distance: CGFloat = CGFloat.infinity
-        var caretLocation: NSTextLocation? = nil
-        var firstCaretOffset: CGFloat? = nil
-        enumerateCaretOffsetsInLineFragment(at: lineFragmentRange.location) { caretOffset, location, leadingEdge, stop in
-            // Track first caret offset (leading edge only)
-            if firstCaretOffset == nil && leadingEdge {
-                firstCaretOffset = caretOffset
-            }
-
-            let localDistance = abs(caretOffset - point.x)
-            if leadingEdge {
-                if localDistance < distance {
-                    distance = localDistance
-                    caretLocation = location
-                } else if localDistance > distance {
-                    stop.pointee = true
-                }
-            } else {
-                // Also consider trailing edges - needed for positions after trailing spaces
-                if localDistance < distance {
-                    distance = localDistance
-                    caretLocation = location
-                }
-            }
-        }
-
-        // Fix for wrapped lines: if we landed at the START of a line fragment,
-        // but the click was far to the RIGHT of the first caret position,
-        // we probably clicked past the end of the previous wrapped line.
-        // Find the previous line fragment and return its last caret position.
-        if let firstOffset = firstCaretOffset,
-           let foundLocation = caretLocation,
-           foundLocation == lineFragmentRange.location, // We landed at line start
-           point.x > firstOffset + 50, // Click is significantly to the right of line start
-           let prevCharLocation = textContentManager?.location(lineFragmentRange.location, offsetBy: -1),
-           prevCharLocation >= documentRange.location,
-           prevCharLocation != lineFragmentRange.location { // Make sure we're actually going to a different line
-            // Find the last caret position in the line fragment containing prevCharLocation
-            var prevLastCaretLocation: NSTextLocation? = nil
-            enumerateCaretOffsetsInLineFragment(at: prevCharLocation) { _, location, leadingEdge, _ in
-                if leadingEdge {
-                    prevLastCaretLocation = location
-                }
-            }
-            if let endOfPrevLine = prevLastCaretLocation {
-                return endOfPrevLine
-            }
-        }
-
-        return caretLocation
+        // Delegate to caretLocationWithAffinity and return just the location
+        return caretLocationWithAffinity(interactingAt: point, inContainerAt: containerLocation)?.0
     }
 
     /// Returns a location and affinity for text produced by a tap or click at the point you specify.
@@ -225,7 +176,8 @@ extension NSTextLayoutManager {
            result == lineFragmentRange.location, // We landed at line start
            point.x > firstOffset + 50, // Click is significantly to the right of line start
            let prevCharLocation = textContentManager?.location(lineFragmentRange.location, offsetBy: -1),
-           prevCharLocation >= documentRange.location {
+           prevCharLocation >= documentRange.location,
+           prevCharLocation != lineFragmentRange.location { // Ensure we're going to a different line
             // Find the last caret position in the line fragment containing prevCharLocation
             var prevLastCaretLocOffset: Int = -1
             enumerateCaretOffsetsInLineFragment(at: prevCharLocation) { _, location, leadingEdge, _ in
