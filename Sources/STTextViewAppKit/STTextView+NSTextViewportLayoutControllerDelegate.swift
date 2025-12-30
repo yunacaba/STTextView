@@ -4,12 +4,23 @@
 import AppKit
 import STTextKitPlus
 
+private let viewportDebugEnabled = ProcessInfo().environment["ST_LAYOUT_DEBUG"] == "YES"
+private let viewportLogEnabled = ProcessInfo().environment["ST_VIEWPORT_LOG"] == "YES"
+
+private func vpLog(_ message: @autoclosure () -> String) {
+    if viewportLogEnabled {
+        print("[VIEWPORT] \(message())")
+    }
+}
+
 extension STTextView: NSTextViewportLayoutControllerDelegate {
 
     public func textViewportLayoutControllerWillLayout(_ textViewportLayoutController: NSTextViewportLayoutController) {
         lastUsedFragmentViews = Set(fragmentViewMap.objectEnumerator()?.allObjects as? [STTextLayoutFragmentView] ?? [])
 
-        if ProcessInfo().environment["ST_LAYOUT_DEBUG"] == "YES" {
+        vpLog("willLayout - preparedContentRect: \(preparedContentRect), contentView.visibleRect: \(contentView.visibleRect)")
+
+        if viewportDebugEnabled {
             let viewportDebugView = NSView(frame: viewportBounds(for: textViewportLayoutController))
             viewportDebugView.clipsToBounds = true
             viewportDebugView.wantsLayer = true
@@ -24,6 +35,8 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
         let prepared = preparedContentRect.insetBy(dx: gutterWidth, dy: 0)
         var visible = contentView.visibleRect
 
+        vpLog("viewportBounds - prepared: \(prepared), visible: \(visible), scrollView: \(scrollView != nil ? "yes" : "nil")")
+
         // Clamp negative origins to 0 (handles overscroll bounce)
         if visible.minX < 0 {
             visible.size.width += visible.minX
@@ -34,11 +47,15 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
             visible.origin.y = 0
         }
 
+        let result: CGRect
         if prepared.intersects(visible) {
-            return prepared.union(visible)
+            result = prepared.union(visible)
         } else {
-            return visible
+            result = visible
         }
+
+        vpLog("viewportBounds -> \(result)")
+        return result
     }
 
     public func textViewportLayoutController(_ textViewportLayoutController: NSTextViewportLayoutController, configureRenderingSurfaceFor textLayoutFragment: NSTextLayoutFragment) {
@@ -87,11 +104,19 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
         updateContentSizeIfNeeded()
 
         // When scrolled to the end of the document, relocate viewport to ensure proper layout
-        if let scrollView, let documentView = scrollView.documentView, scrollView.contentView.bounds.maxY >= documentView.bounds.maxY,
-           let viewportRange = textViewportLayoutController.viewportRange,
-           let textRange = NSTextRange(location: viewportRange.endLocation, end: textLayoutManager.documentRange.endLocation), !textRange.isEmpty {
-            logger.debug("Relocate viewport to the bottom")
-            relocateViewport(to: textLayoutManager.documentRange.endLocation)
+        if let scrollView, let documentView = scrollView.documentView {
+            let atBottom = scrollView.contentView.bounds.maxY >= documentView.bounds.maxY
+            vpLog("didLayout - scrollView.contentView.bounds.maxY: \(scrollView.contentView.bounds.maxY), documentView.bounds.maxY: \(documentView.bounds.maxY), atBottom: \(atBottom)")
+
+            if atBottom,
+               let viewportRange = textViewportLayoutController.viewportRange,
+               let textRange = NSTextRange(location: viewportRange.endLocation, end: textLayoutManager.documentRange.endLocation), !textRange.isEmpty {
+                vpLog("didLayout - relocating viewport to bottom")
+                logger.debug("Relocate viewport to the bottom")
+                relocateViewport(to: textLayoutManager.documentRange.endLocation)
+            }
+        } else {
+            vpLog("didLayout - scrollView is nil!")
         }
 
         updateSelectedRangeHighlight()
@@ -99,6 +124,7 @@ extension STTextView: NSTextViewportLayoutControllerDelegate {
         layoutGutter()
 
         if let viewportRange = textViewportLayoutController.viewportRange {
+            vpLog("didLayout - viewportRange: \(viewportRange)")
             for events in plugins.events {
                 events.didLayoutViewportHandler?(viewportRange)
             }

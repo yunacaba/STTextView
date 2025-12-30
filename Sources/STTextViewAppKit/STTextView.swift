@@ -25,6 +25,14 @@ import STTextKitPlus
 import STTextViewCommon
 import AVFoundation
 
+private let viewportLogEnabled = ProcessInfo().environment["ST_VIEWPORT_LOG"] == "YES"
+
+private func vpLog(_ message: @autoclosure () -> String) {
+    if viewportLogEnabled {
+        print("[VIEWPORT] \(message())")
+    }
+}
+
 /// A TextKit2 text view without NSTextView baggage
 @objc
 open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
@@ -621,6 +629,7 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     var liveResizeLayoutSuppression = false
     private var lastViewportBounds: CGRect = .zero
     private var inLayout = false
+    private var inUpdateConstraints = false
     private var needsRelayout = false
 
     private var shouldUpdateLayout: Bool {
@@ -792,10 +801,11 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
             // textCheckingController.didChangeSelectedRange()
         }
 
-        _usageBoundsForTextContainerObserver = nil
         _usageBoundsForTextContainerObserver = textLayoutManager.observe(\.usageBoundsForTextContainer, options: [.initial, .new]) { [weak self] _, _ in
-            // FB13291926: Notification no longer works. Fixed again in macOS 15.6
-            self?.needsUpdateConstraints = true
+            guard let self, !self.inLayout else { return }
+            // Use needsLayout instead of needsUpdateConstraints to avoid constraint
+            // update loops when embedded in SwiftUI/NSHostingView hierarchies.
+            self.needsLayout = true
         }
     }
 
@@ -975,6 +985,8 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     }
 
     override open func updateConstraints() {
+        inUpdateConstraints = true
+        defer { inUpdateConstraints = false }
         updateTextContainerSize()
         super.updateConstraints()
     }
@@ -986,6 +998,8 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     override open func prepareContent(in rect: NSRect) {
         let oldPreparedContentRect = preparedContentRect
 
+        vpLog("prepareContent(in: \(rect)) - old preparedContentRect: \(oldPreparedContentRect)")
+
         var rect = rect
 
         // Expand content to the full width.
@@ -994,7 +1008,10 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
         super.prepareContent(in: rect)
 
+        vpLog("prepareContent - after super, new preparedContentRect: \(preparedContentRect)")
+
         if !oldPreparedContentRect.isAlmostEqual(to: preparedContentRect) {
+            vpLog("prepareContent - preparedContentRect changed, calling layoutViewport()")
             // I'm pretty sure there is a TextKit2 issue with the processing layout synchronously.
             // It behaves as if it is always processed asynchronously in the background, and it can get clogged.
             // Until the background processing does not finish all the work, the values returned by the API is just bananas.

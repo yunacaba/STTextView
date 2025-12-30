@@ -4,17 +4,29 @@
 
 import AppKit
 
+private let scrollLogEnabled = ProcessInfo().environment["ST_SCROLL_LOG"] == "YES"
+
+private func scrollLog(_ message: @autoclosure () -> String) {
+    if scrollLogEnabled {
+        print("[SCROLL] \(message())")
+    }
+}
+
 extension STTextView {
 
     override open func scroll(_ point: NSPoint) {
+        scrollLog("scroll(\(point)) - applying gutter offset \(gutterView?.frame.width ?? 0)")
         contentView.scroll(point.applying(.init(translationX: -(gutterView?.frame.width ?? 0), y: 0)))
     }
 
     @discardableResult
     func scrollToVisible(_ textRange: NSTextRange, type: NSTextLayoutManager.SegmentType) -> Bool {
         guard var rect = textLayoutManager.textSegmentFrame(in: textRange, type: type) else {
+            scrollLog("scrollToVisible - no textSegmentFrame for range")
             return false
         }
+
+        scrollLog("scrollToVisible - original rect: \(rect)")
 
         if rect.width.isZero {
             // add padding around the point to ensure the visibility the segment
@@ -26,7 +38,14 @@ extension STTextView {
         // adjust rect to mimick it's size to include gutter overlay
         rect.origin.x -= gutterView?.frame.width ?? 0
         rect.size.width += gutterView?.frame.width ?? 0
-        return contentView.scrollToVisible(rect)
+
+        scrollLog("scrollToVisible - adjusted rect: \(rect), contentView.frame: \(contentView.frame)")
+        scrollLog("scrollToVisible - contentView.enclosingScrollView: \(String(describing: contentView.enclosingScrollView))")
+        scrollLog("scrollToVisible - self.scrollView: \(String(describing: scrollView))")
+
+        let result = contentView.scrollToVisible(rect)
+        scrollLog("scrollToVisible -> \(result)")
+        return result
     }
 
     override open func centerSelectionInVisibleArea(_ sender: Any?) {
