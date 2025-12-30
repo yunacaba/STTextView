@@ -355,6 +355,23 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
         }
     }
 
+    /// Optional fixed content width that overrides automatic width calculation.
+    ///
+    /// When set, text container width will be this value minus line fragment padding,
+    /// regardless of the view's visible rect or scroll view bounds.
+    /// This is useful when embedding STTextView in a custom container where the
+    /// visible rect doesn't reflect the desired text width.
+    ///
+    /// Set to `nil` (default) to use automatic width calculation based on visible rect.
+    public var fixedContentWidth: CGFloat? {
+        didSet {
+            if fixedContentWidth != oldValue {
+                updateTextContainerSize()
+                needsLayout = true
+            }
+        }
+    }
+
     /// NSTextView compatibility. Equivalent to `!isVerticallyResizable`.
     @available(*, deprecated, renamed: "isVerticallyResizable")
     @objc
@@ -629,7 +646,6 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     var liveResizeLayoutSuppression = false
     private var lastViewportBounds: CGRect = .zero
     private var inLayout = false
-    private var inUpdateConstraints = false
     private var needsRelayout = false
 
     private var shouldUpdateLayout: Bool {
@@ -803,9 +819,10 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
         _usageBoundsForTextContainerObserver = textLayoutManager.observe(\.usageBoundsForTextContainer, options: [.initial, .new]) { [weak self] _, _ in
             guard let self, !self.inLayout else { return }
-            // Use needsLayout instead of needsUpdateConstraints to avoid constraint
-            // update loops when embedded in SwiftUI/NSHostingView hierarchies.
-            self.needsLayout = true
+            // Signal that our intrinsic content size has changed.
+            // In nested SwiftUI/AppKit setups, the container also observes this KVO
+            // and handles layout timing via layoutViewport() - see UnifiedEditorContainer.
+            self.invalidateIntrinsicContentSize()
         }
     }
 
@@ -985,8 +1002,6 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     }
 
     override open func updateConstraints() {
-        inUpdateConstraints = true
-        defer { inUpdateConstraints = false }
         updateTextContainerSize()
         super.updateConstraints()
     }
@@ -1414,7 +1429,14 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
         let referenceSize = proposedSize ?? effectiveVisibleRect.size
 
         var newTextContainerSize = textContainer.size
-        if !isHorizontallyResizable {
+
+        // If fixedContentWidth is set, use it instead of automatic calculation
+        if let fixedWidth = fixedContentWidth {
+            let contentWidth = fixedWidth - textContainer.lineFragmentPadding
+            if contentWidth > 0, !newTextContainerSize.width.isAlmostEqual(to: contentWidth) {
+                newTextContainerSize.width = contentWidth
+            }
+        } else if !isHorizontallyResizable {
             let proposedContentWidth = referenceSize.width - gutterWidth - scrollerInset
             if proposedContentWidth > 0, !newTextContainerSize.width.isAlmostEqual(to: proposedContentWidth) {
                 newTextContainerSize.width = proposedContentWidth
@@ -1521,7 +1543,10 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
             return false
         }
 
-        if !isHorizontallyResizable {
+        // Determine width based on fixedContentWidth or automatic calculation
+        if let fixedWidth = fixedContentWidth {
+            estimatedSize.width = fixedWidth
+        } else if !isHorizontallyResizable {
             estimatedSize.width = effectiveVisibleRect.width - gutterWidth - scrollerInset
         }
 
@@ -1531,7 +1556,8 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
         estimatedSize.width += gutterWidth
 
-        if let scrollView {
+        // Only expand to scroll view width if not using fixed width
+        if fixedContentWidth == nil, let scrollView {
             estimatedSize.width = max(estimatedSize.width, scrollView.contentView.bounds.width - scrollerInset)
         }
 
