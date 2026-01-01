@@ -370,6 +370,20 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     @MainActor
     open var bottomPadding: CGFloat = 0
 
+    /// Maximum width for text content wrapping.
+    ///
+    /// When set, text wraps at this width or narrower (whichever is smaller).
+    /// This is useful when you want the text to have a maximum readable width
+    /// while the containing scroll view may be wider (e.g., with a sidebar or
+    /// accessory view present).
+    ///
+    /// When `nil` (default), text container width is determined by the visible
+    /// rect width minus gutter and scroller insets (standard behavior).
+    ///
+    /// This property only takes effect when `isHorizontallyResizable` is `false`.
+    @MainActor
+    open var maxContentWidth: CGFloat?
+
     /// Enable to show line numbers in the gutter.
     @MainActor @Invalidating(.layout)
     open var showsLineNumbers = false {
@@ -1401,7 +1415,14 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
         var newTextContainerSize = textContainer.size
         if !isHorizontallyResizable {
-            let proposedContentWidth = referenceSize.width - gutterWidth - scrollerInset
+            // Use maxContentWidth if set, otherwise derive from reference size
+            let derivedWidth = referenceSize.width - gutterWidth - scrollerInset
+            let proposedContentWidth: CGFloat
+            if let maxWidth = maxContentWidth, maxWidth > 0 {
+                proposedContentWidth = min(maxWidth, derivedWidth)
+            } else {
+                proposedContentWidth = derivedWidth
+            }
             if proposedContentWidth > 0, !newTextContainerSize.width.isAlmostEqual(to: proposedContentWidth) {
                 newTextContainerSize.width = proposedContentWidth
             }
@@ -1508,7 +1529,13 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
         }
 
         if !isHorizontallyResizable {
-            estimatedSize.width = effectiveVisibleRect.width - gutterWidth - scrollerInset
+            // Use maxContentWidth if set, otherwise derive from visible rect
+            let derivedWidth = effectiveVisibleRect.width - gutterWidth - scrollerInset
+            if let maxWidth = maxContentWidth, maxWidth > 0 {
+                estimatedSize.width = min(maxWidth, derivedWidth)
+            } else {
+                estimatedSize.width = derivedWidth
+            }
         }
 
         if !isVerticallyResizable {
@@ -1517,7 +1544,8 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
 
         estimatedSize.width += gutterWidth
 
-        if let scrollView {
+        // Only expand to scroll view width when NOT using max content width
+        if maxContentWidth == nil, let scrollView {
             estimatedSize.width = max(estimatedSize.width, scrollView.contentView.bounds.width - scrollerInset)
         }
 
