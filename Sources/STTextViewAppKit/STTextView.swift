@@ -624,7 +624,7 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
     open var usesFontPanel = true
 
     /// A Boolean value indicating whether the view needs scroll to visible selection pass before it can be drawn.
-    var needsScrollToSelection = false {
+    public var needsScrollToSelection = false {
         didSet {
             if needsScrollToSelection {
                 needsLayout = true

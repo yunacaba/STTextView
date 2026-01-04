@@ -252,7 +252,7 @@ open class STTextView: UIScrollView, STTextViewProtocol {
     let lineHighlightView: STLineHighlightView
 
     /// A Boolean value indicating whether the view needs scroll to visible selection pass before it can be drawn.
-    var needsScrollToSelection = false {
+    public var needsScrollToSelection = false {
         didSet {
             if needsScrollToSelection {
                 setNeedsLayout()
