@@ -1564,7 +1564,7 @@ open class STTextView: NSView, NSTextInput, NSTextContent, STTextViewProtocol {
         }
     }
 
-    func relocateViewport(to location: NSTextLocation) {
+    public func relocateViewport(to location: NSTextLocation) {
         let textViewportLayoutController = textLayoutManager.textViewportLayoutController
 
         let suggestedAnchor = textViewportLayoutController.relocateViewport(to: location)
